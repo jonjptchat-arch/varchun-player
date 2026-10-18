@@ -81,6 +81,88 @@
         height: 100vh;
       }
     }
+    /* Floating server switcher */
+    .server-bar {
+      position: absolute;
+      top: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 20;
+      background: rgba(14, 14, 20, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 24px;
+      padding: 5px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .server-info {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      color: #ccc;
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .pulse-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #00F2FE;
+      box-shadow: 0 0 8px #00F2FE;
+      flex-shrink: 0;
+    }
+    .switch-server-btn {
+      background: linear-gradient(135deg, rgba(0, 242, 254, 0.25), rgba(0, 114, 255, 0.25));
+      border: 1px solid rgba(0, 242, 254, 0.5);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.2s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .switch-server-btn:active {
+      transform: scale(0.94);
+      background: linear-gradient(135deg, rgba(0, 242, 254, 0.4), rgba(0, 114, 255, 0.4));
+    }
+    .toast {
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: rgba(14, 14, 20, 0.92);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(0, 242, 254, 0.4);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 12px;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 30;
+      white-space: nowrap;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
     .error-box {
       display: none;
       text-align: center;
@@ -100,10 +182,23 @@
     </div>
   </div>
 
+  <!-- Плавающая панель смены сервера/плеера -->
+  <div id="server-bar" class="server-bar" style="display: none;">
+    <div class="server-info">
+      <span class="pulse-dot"></span>
+      <span id="current-server-name">Сервер 1</span>
+    </div>
+    <button id="btn-next-server" class="switch-server-btn" type="button">
+      <span>⚡ Резерв</span>
+    </button>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
   <div class="player-container">
     <iframe 
       id="player-frame" 
-      sandbox="allow-scripts allow-same-origin allow-fullscreen allow-forms"
+      sandbox="allow-scripts allow-same-origin allow-fullscreen allow-forms allow-popups allow-popups-to-escape-sandbox"
       allow="autoplay; fullscreen; encrypted-media; picture-in-picture" 
       allowfullscreen="true" 
       webkitallowfullscreen="true" 
@@ -124,6 +219,7 @@
 
       const params = new URLSearchParams(window.location.search);
       const b64Url = params.get('play');
+      const b64Alts = params.get('alts');
       const title = params.get('t');
       const ep = params.get('ep');
 
@@ -136,6 +232,16 @@
       const frame = document.getElementById('player-frame');
       const loader = document.getElementById('loading-screen');
       const errBox = document.getElementById('error-box');
+      const serverBar = document.getElementById('server-bar');
+      const serverNameEl = document.getElementById('current-server-name');
+      const nextBtn = document.getElementById('btn-next-server');
+      const toastEl = document.getElementById('toast');
+
+      function showToast(msg) {
+        toastEl.textContent = msg;
+        toastEl.classList.add('show');
+        setTimeout(() => toastEl.classList.remove('show'), 2500);
+      }
 
       if (!b64Url) {
         loader.querySelector('.spinner').style.display = 'none';
@@ -144,24 +250,73 @@
         return;
       }
 
+      // Список всех серверов/озвучек
+      const allStreams = [];
       try {
-        let streamUrl = atob(b64Url);
-        if (streamUrl.includes('anilibria.tv') || streamUrl.includes('iframe.php')) {
-          document.body.classList.add('is-anilibria');
+        const mainUrl = atob(b64Url);
+        allStreams.push({ name: 'Основной', url: mainUrl });
+      } catch(e) {}
+
+      if (b64Alts) {
+        try {
+          const rawAlts = atob(b64Alts);
+          const parsed = JSON.parse(decodeURIComponent(escape(rawAlts)));
+          if (Array.isArray(parsed)) {
+            parsed.forEach(a => {
+              if (a && a.url && !allStreams.some(s => s.url === a.url)) {
+                allStreams.push({
+                  name: a.name || a.provider || 'Резерв',
+                  url: a.url
+                });
+              }
+            });
+          }
+        } catch(e) {
+          console.warn('Alts parse error:', e);
         }
-        frame.src = streamUrl;
+      }
+
+      let currentIdx = 0;
+
+      function loadStream(idx, isManualSwitch) {
+        if (!allStreams[idx]) return;
+        const s = allStreams[idx];
+
+        if (isManualSwitch) {
+          loader.style.display = 'flex';
+          loader.style.opacity = '1';
+        }
+
+        if (s.url.includes('anilibria.tv') || s.url.includes('iframe.php')) {
+          document.body.classList.add('is-anilibria');
+        } else {
+          document.body.classList.remove('is-anilibria');
+        }
+
+        frame.src = s.url;
+        serverNameEl.textContent = s.name;
+
+        if (isManualSwitch) {
+          showToast('⚡ Сервер переключен: ' + s.name);
+        }
 
         frame.onload = function() {
           setTimeout(function() {
             loader.style.opacity = '0';
             setTimeout(function() { loader.style.display = 'none'; }, 300);
-          }, 500);
+          }, 400);
         };
-      } catch (e) {
-        loader.querySelector('.spinner').style.display = 'none';
-        errBox.style.display = 'block';
-        document.getElementById('error-msg').textContent = 'Некорректный ключ потока: ' + e.message;
       }
+
+      if (allStreams.length > 1) {
+        serverBar.style.display = 'flex';
+        nextBtn.onclick = function() {
+          currentIdx = (currentIdx + 1) % allStreams.length;
+          loadStream(currentIdx, true);
+        };
+      }
+
+      loadStream(0, false);
     })();
   </script>
 </body>
