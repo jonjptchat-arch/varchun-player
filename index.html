@@ -81,36 +81,38 @@
         height: 100vh;
       }
     }
-    /* Floating server switcher */
+    /* Floating top control bar */
     .server-bar {
       position: absolute;
-      top: 12px;
+      top: 10px;
       left: 50%;
       transform: translateX(-50%);
       z-index: 20;
-      background: rgba(14, 14, 20, 0.85);
+      background: rgba(12, 12, 18, 0.88);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
-      border: 1px solid rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.16);
       border-radius: 24px;
-      padding: 5px 12px;
+      padding: 4px 10px;
       display: flex;
       align-items: center;
-      gap: 10px;
-      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
-      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      gap: 6px;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.65);
+      transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      max-width: 96%;
     }
     .server-info {
       display: flex;
       align-items: center;
       gap: 6px;
-      font-size: 12px;
-      font-weight: 500;
-      color: #ccc;
-      max-width: 140px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #e0e0e0;
+      max-width: 110px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      padding: 0 4px;
     }
     .pulse-dot {
       width: 7px;
@@ -120,24 +122,28 @@
       box-shadow: 0 0 8px #00F2FE;
       flex-shrink: 0;
     }
-    .switch-server-btn {
-      background: linear-gradient(135deg, rgba(0, 242, 254, 0.25), rgba(0, 114, 255, 0.25));
-      border: 1px solid rgba(0, 242, 254, 0.5);
+    .ctrl-btn {
+      background: linear-gradient(135deg, rgba(0, 242, 254, 0.22), rgba(0, 114, 255, 0.22));
+      border: 1px solid rgba(0, 242, 254, 0.45);
       color: #fff;
       font-size: 11px;
       font-weight: 600;
-      padding: 4px 10px;
+      padding: 4px 9px;
       border-radius: 12px;
       cursor: pointer;
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 3px;
       transition: all 0.2s ease;
       -webkit-tap-highlight-color: transparent;
+      white-space: nowrap;
     }
-    .switch-server-btn:active {
-      transform: scale(0.94);
-      background: linear-gradient(135deg, rgba(0, 242, 254, 0.4), rgba(0, 114, 255, 0.4));
+    .ctrl-btn:hover {
+      background: linear-gradient(135deg, rgba(0, 242, 254, 0.35), rgba(0, 114, 255, 0.35));
+      border-color: #00F2FE;
+    }
+    .ctrl-btn:active {
+      transform: scale(0.93);
     }
     .toast {
       position: absolute;
@@ -182,14 +188,20 @@
     </div>
   </div>
 
-  <!-- Плавающая панель смены сервера/плеера -->
+  <!-- Плавающая панель управления: смены сервера, полного экрана и открытия в браузере для ПК -->
   <div id="server-bar" class="server-bar" style="display: none;">
     <div class="server-info">
       <span class="pulse-dot"></span>
-      <span id="current-server-name">Сервер 1</span>
+      <span id="current-server-name">Основной</span>
     </div>
-    <button id="btn-next-server" class="switch-server-btn" type="button">
+    <button id="btn-next-server" class="ctrl-btn" type="button" title="Переключить озвучку или сервер">
       <span>⚡ Резерв</span>
+    </button>
+    <button id="btn-fullscreen" class="ctrl-btn" type="button" title="Развернуть во весь экран">
+      <span>⛶ Экран</span>
+    </button>
+    <button id="btn-browser" class="ctrl-btn" type="button" title="Открыть во внешнем браузере (для ПК)">
+      <span>🌐 ПК</span>
     </button>
   </div>
 
@@ -365,13 +377,95 @@
         };
       }
 
+      // Настройка панели управления
+      serverBar.style.display = 'flex';
+
       if (allStreams.length > 1) {
-        serverBar.style.display = 'flex';
+        nextBtn.style.display = 'flex';
         nextBtn.onclick = function() {
           currentIdx = (currentIdx + 1) % allStreams.length;
           loadStream(currentIdx, true);
         };
+      } else {
+        nextBtn.style.display = 'none';
       }
+
+      // Кнопка: Полноэкранный режим
+      const fsBtn = document.getElementById('btn-fullscreen');
+      function updateFsBtn() {
+        const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+        if (fsBtn) {
+          fsBtn.innerHTML = isFs ? '<span>🗗 Окно</span>' : '<span>⛶ Экран</span>';
+        }
+      }
+      document.addEventListener('fullscreenchange', updateFsBtn);
+      document.addEventListener('webkitfullscreenchange', updateFsBtn);
+
+      if (fsBtn) {
+        fsBtn.onclick = function() {
+          if (window.Telegram && window.Telegram.WebApp) {
+            try { window.Telegram.WebApp.expand(); } catch(e) {}
+          }
+          const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+          const elem = document.documentElement;
+          if (!isFs) {
+            if (elem.requestFullscreen) {
+              elem.requestFullscreen().catch(() => {});
+            } else if (elem.webkitRequestFullscreen) {
+              elem.webkitRequestFullscreen();
+            } else if (elem.mozRequestFullScreen) {
+              elem.mozRequestFullScreen();
+            } else if (elem.msRequestFullscreen) {
+              elem.msRequestFullscreen();
+            }
+            showToast('⛶ Полноэкранный режим');
+          } else {
+            if (document.exitFullscreen) {
+              document.exitFullscreen().catch(() => {});
+            } else if (document.webkitExitFullscreen) {
+              document.webkitExitFullscreen();
+            } else if (document.mozCancelFullScreen) {
+              document.mozCancelFullScreen();
+            } else if (document.msExitFullscreen) {
+              document.msExitFullscreen();
+            }
+            showToast('🗗 Оконный режим');
+          }
+          updateFsBtn();
+        };
+      }
+
+      // Кнопка: Открыть в браузере (для ПК и внешних плееров)
+      const browserBtn = document.getElementById('btn-browser');
+      if (browserBtn) {
+        browserBtn.onclick = function() {
+          const s = allStreams[currentIdx];
+          if (!s || !s.url) return;
+          if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openLink) {
+            try {
+              window.Telegram.WebApp.openLink(s.url);
+              showToast('🌐 Открыто в браузере');
+              return;
+            } catch(e) {}
+          }
+          window.open(s.url, '_blank');
+          showToast('🌐 Открыто во вкладке');
+        };
+      }
+
+      // Плавное затухание панели, чтобы не мешать просмотру
+      let hideBarTimer = null;
+      function kickBarTimer() {
+        serverBar.style.opacity = '1';
+        clearTimeout(hideBarTimer);
+        hideBarTimer = setTimeout(function() {
+          serverBar.style.opacity = '0.35';
+        }, 4000);
+      }
+      serverBar.addEventListener('mouseenter', function() { serverBar.style.opacity = '1'; clearTimeout(hideBarTimer); });
+      document.body.addEventListener('mousemove', kickBarTimer);
+      document.body.addEventListener('touchstart', kickBarTimer);
+      kickBarTimer();
 
       loadStream(0, false);
     })();
