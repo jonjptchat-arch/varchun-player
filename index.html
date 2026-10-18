@@ -188,7 +188,7 @@
     </div>
   </div>
 
-  <!-- Плавающая панель управления: смены сервера, полного экрана и открытия в браузере для ПК -->
+  <!-- Плавающая панель управления: смены сервера и полного экрана -->
   <div id="server-bar" class="server-bar" style="display: none;">
     <div class="server-info">
       <span class="pulse-dot"></span>
@@ -200,18 +200,14 @@
     <button id="btn-fullscreen" class="ctrl-btn" type="button" title="Развернуть во весь экран">
       <span>⛶ Экран</span>
     </button>
-    <button id="btn-browser" class="ctrl-btn" type="button" title="Открыть во внешнем браузере (для ПК)">
-      <span>🌐 ПК</span>
-    </button>
   </div>
 
   <div id="toast" class="toast"></div>
 
-  <div class="player-container">
+  <div class="player-container" id="player-container">
     <iframe 
       id="player-frame" 
-      sandbox="allow-scripts allow-same-origin allow-fullscreen allow-forms allow-popups allow-popups-to-escape-sandbox"
-      allow="autoplay; fullscreen; encrypted-media; picture-in-picture" 
+      allow="autoplay *; fullscreen *; encrypted-media *; picture-in-picture *" 
       allowfullscreen="true" 
       webkitallowfullscreen="true" 
       mozallowfullscreen="true">
@@ -392,34 +388,58 @@
 
       // Кнопка: Полноэкранный режим
       const fsBtn = document.getElementById('btn-fullscreen');
+      const container = document.getElementById('player-container') || document.documentElement;
+
+      function isFullscreen() {
+        return !!(
+          document.fullscreenElement ||
+          document.webkitFullscreenElement ||
+          document.mozFullScreenElement ||
+          document.msFullscreenElement ||
+          (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.isFullscreen)
+        );
+      }
+
       function updateFsBtn() {
-        const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+        const isFs = isFullscreen();
         if (fsBtn) {
           fsBtn.innerHTML = isFs ? '<span>🗗 Окно</span>' : '<span>⛶ Экран</span>';
         }
       }
       document.addEventListener('fullscreenchange', updateFsBtn);
       document.addEventListener('webkitfullscreenchange', updateFsBtn);
+      document.addEventListener('mozfullscreenchange', updateFsBtn);
 
       if (fsBtn) {
         fsBtn.onclick = function() {
-          if (window.Telegram && window.Telegram.WebApp) {
-            try { window.Telegram.WebApp.expand(); } catch(e) {}
-          }
-          const isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
-          const elem = document.documentElement;
+          const isFs = isFullscreen();
           if (!isFs) {
-            if (elem.requestFullscreen) {
-              elem.requestFullscreen().catch(() => {});
-            } else if (elem.webkitRequestFullscreen) {
-              elem.webkitRequestFullscreen();
-            } else if (elem.mozRequestFullScreen) {
-              elem.mozRequestFullScreen();
-            } else if (elem.msRequestFullscreen) {
-              elem.msRequestFullscreen();
+            // 1. Telegram WebApp Fullscreen (Bot API 8.0+)
+            if (window.Telegram && window.Telegram.WebApp) {
+              try {
+                if (typeof window.Telegram.WebApp.requestFullscreen === 'function') {
+                  window.Telegram.WebApp.requestFullscreen();
+                } else if (typeof window.Telegram.WebApp.expand === 'function') {
+                  window.Telegram.WebApp.expand();
+                }
+              } catch(e) {}
+            }
+            // 2. DOM Fullscreen API
+            const target = container.requestFullscreen ? container : document.documentElement;
+            if (target.requestFullscreen) {
+              target.requestFullscreen().catch(() => {});
+            } else if (target.webkitRequestFullscreen) {
+              target.webkitRequestFullscreen();
+            } else if (target.mozRequestFullScreen) {
+              target.mozRequestFullScreen();
+            } else if (target.msRequestFullscreen) {
+              target.msRequestFullscreen();
             }
             showToast('⛶ Полноэкранный режим');
           } else {
+            if (window.Telegram && window.Telegram.WebApp && typeof window.Telegram.WebApp.exitFullscreen === 'function') {
+              try { window.Telegram.WebApp.exitFullscreen(); } catch(e) {}
+            }
             if (document.exitFullscreen) {
               document.exitFullscreen().catch(() => {});
             } else if (document.webkitExitFullscreen) {
@@ -431,25 +451,7 @@
             }
             showToast('🗗 Оконный режим');
           }
-          updateFsBtn();
-        };
-      }
-
-      // Кнопка: Открыть в браузере (для ПК и внешних плееров)
-      const browserBtn = document.getElementById('btn-browser');
-      if (browserBtn) {
-        browserBtn.onclick = function() {
-          const s = allStreams[currentIdx];
-          if (!s || !s.url) return;
-          if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.openLink) {
-            try {
-              window.Telegram.WebApp.openLink(s.url);
-              showToast('🌐 Открыто в браузере');
-              return;
-            } catch(e) {}
-          }
-          window.open(s.url, '_blank');
-          showToast('🌐 Открыто во вкладке');
+          setTimeout(updateFsBtn, 200);
         };
       }
 
