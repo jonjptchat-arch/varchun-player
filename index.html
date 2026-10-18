@@ -217,16 +217,84 @@
         } catch(e) {}
       }
 
+      function decodeBase64UrlSafe(str) {
+        if (!str) return null;
+        try {
+          let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+          while (base64.length % 4) {
+            base64 += '=';
+          }
+          const binary = atob(base64);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+          }
+          return new TextDecoder().decode(bytes);
+        } catch(e) {
+          console.warn('Decode error:', e);
+          return null;
+        }
+      }
+
       const params = new URLSearchParams(window.location.search);
-      const b64Url = params.get('play');
-      const b64Alts = params.get('alts');
-      const title = params.get('t');
-      const ep = params.get('ep');
+
+      // Telegram Mini App Direct Link support via startapp / start_param
+      let startParam = null;
+      try {
+        if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.start_param) {
+          startParam = window.Telegram.WebApp.initDataUnsafe.start_param;
+        }
+      } catch(e) {}
+
+      if (!startParam) {
+        startParam = params.get('tgWebAppStartParam') || params.get('startapp') || params.get('start_param');
+      }
+
+      let mainStreamUrl = null;
+      let title = null;
+      let ep = null;
+      let rawAlts = null;
+
+      if (startParam) {
+        try {
+          const jsonStr = decodeBase64UrlSafe(startParam);
+          if (jsonStr) {
+            const data = JSON.parse(jsonStr);
+            mainStreamUrl = data.u || null;
+            title = data.t || null;
+            ep = data.e || null;
+            rawAlts = data.a || null;
+          }
+        } catch(e) {
+          console.warn('start_param unpack error:', e);
+        }
+      }
+
+      // Fallback: direct query parameters
+      if (!mainStreamUrl) {
+        const b64Url = params.get('play');
+        if (b64Url) {
+          try {
+            mainStreamUrl = atob(b64Url);
+          } catch(e) {}
+        }
+      }
+      if (!title) title = params.get('t');
+      if (!ep) ep = params.get('ep');
+      if (!rawAlts) {
+        const b64Alts = params.get('alts');
+        if (b64Alts) {
+          try {
+            const rawDecoded = atob(b64Alts);
+            rawAlts = JSON.parse(decodeURIComponent(escape(rawDecoded)));
+          } catch(e) {}
+        }
+      }
 
       if (title) {
         const epSuffix = ep ? ' (Серия ' + ep + ')' : '';
         document.getElementById('player-title').textContent = title + epSuffix;
-        document.title = title + epSuffix + ' — Старый Варчун';
+        document.title = 'Старый Варчун — Онлайн Плеер';
       }
 
       const frame = document.getElementById('player-frame');
@@ -243,37 +311,26 @@
         setTimeout(() => toastEl.classList.remove('show'), 2500);
       }
 
-      if (!b64Url) {
+      if (!mainStreamUrl) {
         loader.querySelector('.spinner').style.display = 'none';
         errBox.style.display = 'block';
-        document.getElementById('error-msg').textContent = 'Поток не найден. Перезапустите выбор тайтла в боте.';
+        document.getElementById('error-msg').textContent = 'Поток не найден. Перезапустите выбор тайтла в чате бота.';
         return;
       }
 
       // Список всех серверов/озвучек
       const allStreams = [];
-      try {
-        const mainUrl = atob(b64Url);
-        allStreams.push({ name: 'Основной', url: mainUrl });
-      } catch(e) {}
+      allStreams.push({ name: 'Основной', url: mainStreamUrl });
 
-      if (b64Alts) {
-        try {
-          const rawAlts = atob(b64Alts);
-          const parsed = JSON.parse(decodeURIComponent(escape(rawAlts)));
-          if (Array.isArray(parsed)) {
-            parsed.forEach(a => {
-              if (a && a.url && !allStreams.some(s => s.url === a.url)) {
-                allStreams.push({
-                  name: a.name || a.provider || 'Резерв',
-                  url: a.url
-                });
-              }
-            });
+      if (Array.isArray(rawAlts)) {
+        rawAlts.forEach(a => {
+          if (!a) return;
+          const u = a.url || a.u;
+          const n = a.name || a.n || a.provider || 'Резерв';
+          if (u && !allStreams.some(s => s.url === u)) {
+            allStreams.push({ name: n, url: u });
           }
-        } catch(e) {
-          console.warn('Alts parse error:', e);
-        }
+        });
       }
 
       let currentIdx = 0;
