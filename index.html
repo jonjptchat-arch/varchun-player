@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Старый Варчун — Онлайн Плеер</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: #0a0a0f;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    #loading-screen {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: #0a0a0f;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      transition: opacity 0.3s ease;
+    }
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border: 3px solid rgba(255, 255, 255, 0.1);
+      border-top-color: #00F2FE;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-bottom: 16px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .loading-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #e0e0e0;
+      margin-bottom: 6px;
+    }
+    .loading-sub {
+      font-size: 13px;
+      color: #888;
+    }
+    #player-frame {
+      width: 100%;
+      height: 100%;
+      border: none;
+      flex: 1;
+      display: block;
+      background: #000;
+    }
+    .error-box {
+      display: none;
+      text-align: center;
+      padding: 24px;
+    }
+    .error-box h3 { color: #ff5252; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <div id="loading-screen">
+    <div class="spinner"></div>
+    <div class="loading-title" id="player-title">Загрузка плеера...</div>
+    <div class="loading-sub">Старый Варчун настраивает видеопоток 🍿</div>
+    <div class="error-box" id="error-box">
+      <h3>Ошибка загрузки</h3>
+      <p id="error-msg"></p>
+    </div>
+  </div>
+
+  <iframe 
+    id="player-frame" 
+    allow="autoplay; fullscreen; encrypted-media; picture-in-picture" 
+    allowfullscreen="true" 
+    webkitallowfullscreen="true" 
+    mozallowfullscreen="true">
+  </iframe>
+
+  <script>
+    (function() {
+      if (window.Telegram && window.Telegram.WebApp) {
+        window.Telegram.WebApp.ready();
+        window.Telegram.WebApp.expand();
+        try {
+          window.Telegram.WebApp.setHeaderColor('#0a0a0f');
+          window.Telegram.WebApp.setBackgroundColor('#0a0a0f');
+        } catch(e) {}
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      const b64Url = params.get('play');
+      const title = params.get('t');
+
+      if (title) {
+        document.getElementById('player-title').textContent = title;
+        document.title = title + ' — Старый Варчун';
+      }
+
+      const frame = document.getElementById('player-frame');
+      const loader = document.getElementById('loading-screen');
+      const errBox = document.getElementById('error-box');
+
+      if (!b64Url) {
+        loader.querySelector('.spinner').style.display = 'none';
+        errBox.style.display = 'block';
+        document.getElementById('error-msg').textContent = 'Поток не найден. Перезапустите выбор тайтла в боте.';
+        return;
+      }
+
+      try {
+        let streamUrl = atob(b64Url);
+        frame.src = streamUrl;
+
+        frame.onload = function() {
+          setTimeout(function() {
+            loader.style.opacity = '0';
+            setTimeout(function() { loader.style.display = 'none'; }, 300);
+          }, 500);
+        };
+      } catch (e) {
+        loader.querySelector('.spinner').style.display = 'none';
+        errBox.style.display = 'block';
+        document.getElementById('error-msg').textContent = 'Некорректный ключ потока: ' + e.message;
+      }
+    })();
+  </script>
+</body>
+</html>
